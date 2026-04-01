@@ -79,6 +79,7 @@ app.spectrogram/
 ## Development Notes
 
 - The source currently lives at the repository root; this pass does not move files into `src/`.
+- Runtime asset and module references are document-relative, so the app can be hosted from a subdirectory instead of only from a site root.
 - `npm run lint` currently reports pre-existing StandardJS issues. The documentation reflects that baseline and does not claim a clean lint pass.
 - The codebase contains unfinished UI paths, including drag-and-drop MIDI handling that is wired in JavaScript but not currently exposed in `index.html`.
 

@@ -16,6 +16,7 @@
 
 - The app is functional as a small static web project with no framework or build step.
 - Source files remain at repository root.
+- Runtime asset and module paths are relative to `index.html`, so the app can be served from a nested base path.
 - UI structure is largely static in `index.html`, while behavior is wired in `uiController.js`.
 - The outer UI shell now uses a tokenized design layer inspired by `app.vectorscope`.
 - Canvas overlay rendering still contains hard-coded visual values that have not been moved to shared theme tokens yet.
