@@ -26,7 +26,6 @@
 - There is no automated test suite.
 - `npm.cmd run lint` currently reports existing StandardJS issues.
 - Browser microphone access requires a secure context and user permission.
-- Some code paths are experimental or incomplete, especially the time-frequency reassignment controls.
 - Drag-and-drop MIDI handling is optional in code and not currently exposed in the rendered UI.
 
 ## Near-Term Direction

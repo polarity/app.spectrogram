@@ -1,118 +1,284 @@
 /**
- * Time-Frequency Reassignment implementation
+ * Frequency-only spectrogram reassignment.
  */
-import { createHermiteFunctions } from './utils/windowFunctions.js'
-import { computeSTFT } from './utils/fft.js'
+import { computeSTFT, createHannWindow, getFFTContext } from './utils/fft.js'
 
-const WINDOW_SIZE = 2048
-const previousPhase = new Float32Array(WINDOW_SIZE)
+const analysisCache = new Map()
+
+const reassignmentState = {
+  fftSize: 0,
+  sampleRate: 0,
+  lastPhase: null,
+  lastTime: null
+}
 
 /**
- * Compute Time-Frequency Reassignment spectrogram
- * @param {Float32Array} audioData - Input signal
- * @param {number} sampleRate - Audio sample rate
- * @param {number} step - Step size in samples
- * @param {number} K - Number of tapers (default 6)
- * @param {number} tm - Time support (default 6.0)
+ * Resets all reassignment state.
  */
-export function analyzeReassignment (audioData, sampleRate, step = WINDOW_SIZE / 4, K = 6, tm = 6.0) {
-  // Initialize Hermite functions
-  const { h, Dh } = createHermiteFunctions(WINDOW_SIZE, K, tm)
+export function resetReassignmentState () {
+  reassignmentState.fftSize = 0
+  reassignmentState.sampleRate = 0
+  reassignmentState.lastPhase = null
+  reassignmentState.lastTime = null
+}
 
-  // Normalize and amplify input data
-  const maxAmp = Math.max(...audioData.map(Math.abs))
-  const normalizedData = new Float32Array(audioData.length)
-  const amplificationFactor = 200.0
+/**
+ * Produces a dense reassigned magnitude spectrum scaled to 0-255.
+ * @param {Float32Array} audioData - Time-domain frame.
+ * @param {Object} options - Analysis options.
+ * @param {number} options.sampleRate - Audio sample rate.
+ * @param {number} options.fftSize - FFT size.
+ * @param {number} options.currentTime - AudioContext currentTime in seconds.
+ * @returns {Float32Array} Reassigned magnitude vector.
+ */
+export function analyzeReassignment (audioData, { sampleRate, fftSize, currentTime }) {
+  const analysis = getAnalysisSetup(fftSize)
+  const spectrum = computeSTFT(audioData, analysis.window, analysis.context)
+  const baseMagnitude = spectrum.magnitude
+  const reassigned = new Float32Array(baseMagnitude.length)
+  const floorBlend = 0.32
 
-  for (let i = 0; i < audioData.length; i++) {
-    normalizedData[i] = (audioData[i] / maxAmp) * amplificationFactor
+  for (let bin = 0; bin < baseMagnitude.length; bin++) {
+    reassigned[bin] = baseMagnitude[bin] * floorBlend
   }
 
-  // Calculate number of frames
-  const nFrames = Math.max(1, Math.floor((audioData.length - WINDOW_SIZE) / step) + 1)
-  const result = new Uint8Array(WINDOW_SIZE / 2)
+  const hopSamples = getHopSamples(currentTime, sampleRate)
+  const canReassign = isReassignmentStateCompatible(sampleRate, fftSize, hopSamples)
 
-  // For each time frame
-  for (let frame = 0; frame < nFrames; frame++) {
-    const startIdx = frame * step
-    const frameData = normalizedData.slice(startIdx, startIdx + WINDOW_SIZE)
-
-    // Apply each taper
-    const tfr = new Float32Array(WINDOW_SIZE / 2)
-    let maxMagnitude = 0
-
-    for (let k = 0; k < K; k++) {
-      // Apply time and frequency windows
-      const timeWindow = h.slice(k * WINDOW_SIZE, (k + 1) * WINDOW_SIZE)
-      const freqWindow = Dh.slice(k * WINDOW_SIZE, (k + 1) * WINDOW_SIZE)
-
-      // Compute STFTs
-      const stft = computeSTFT(frameData, timeWindow)
-      const freqMod = computeSTFT(frameData, freqWindow)
-
-      // Compute instantaneous frequency with improved precision
-      for (let bin = 0; bin < WINDOW_SIZE / 2; bin++) {
-        const real = stft[bin * 2]
-        const imag = stft[bin * 2 + 1]
-        const mag = Math.sqrt(real * real + imag * imag)
-
-        // Calculate actual frequency for this bin
-        const binFreq = (bin * sampleRate) / WINDOW_SIZE
-
-        // Focus on the 500Hz range
-        const targetFreq = 500
-        const freqWeight = Math.exp(-Math.pow(binFreq - targetFreq, 2) / (2 * 100 * 100))
-
-        if (mag > maxMagnitude * 0.01) { // Lower threshold
-          maxMagnitude = Math.max(maxMagnitude, mag)
-
-          const phase = Math.atan2(imag, real)
-          previousPhase[bin] = phase
-
-          // Calculate frequency phase
-          const freqReal = freqMod[bin * 2]
-          const freqImag = freqMod[bin * 2 + 1]
-          const freqPhase = Math.atan2(freqImag, freqReal)
-
-          // Calculate frequency offset
-          let instFreqOffset = (freqPhase - phase) / (2 * Math.PI)
-          while (instFreqOffset > Math.PI) instFreqOffset -= 2 * Math.PI
-          while (instFreqOffset < -Math.PI) instFreqOffset += 2 * Math.PI
-
-          // Limit frequency offset
-          const maxOffset = 50 // Hz
-          const freqOffset = Math.max(-maxOffset, Math.min(maxOffset,
-            instFreqOffset * sampleRate / WINDOW_SIZE))
-
-          const reassignedFreq = binFreq + freqOffset
-          const reassignedBin = Math.round((reassignedFreq * WINDOW_SIZE) / sampleRate)
-
-          if (reassignedBin >= 0 && reassignedBin < WINDOW_SIZE / 2) {
-            // Gaussian weighting with very narrow window
-            const distance = Math.abs(reassignedBin - bin)
-            const sigma = 0.5 // very narrow window
-            const weight = Math.exp(-distance * distance / (2 * sigma * sigma))
-
-            // Final weight
-            const finalWeight = weight * freqWeight * Math.pow(mag / maxMagnitude, 2)
-
-            tfr[reassignedBin] += mag * finalWeight
-          }
-        }
-      }
-    }
-
-    // Normalize and convert to output format
-    const maxVal = Math.max(...tfr)
-    if (maxVal > 0) {
-      for (let i = 0; i < WINDOW_SIZE / 2; i++) {
-        const normalized = tfr[i] / maxVal
-        // Stronger gamma correction
-        const enhanced = Math.pow(normalized, 0.1)
-        result[i] = Math.min(255, Math.max(0, enhanced * 255 * 5.0))
-      }
+  if (canReassign) {
+    applyFrequencyReassignment(reassigned, spectrum, hopSamples, sampleRate, fftSize)
+  } else {
+    for (let bin = 0; bin < baseMagnitude.length; bin++) {
+      reassigned[bin] += baseMagnitude[bin] * (1 - floorBlend)
     }
   }
 
-  return result
+  updateReassignmentState(spectrum.phase, sampleRate, fftSize, currentTime)
+
+  return scaleMagnitudeToByteRange(smoothSpectrum(reassigned))
+}
+
+/**
+ * Returns cached windowing and FFT setup.
+ * @param {number} fftSize - FFT size.
+ * @returns {Object} Cached analysis setup.
+ */
+function getAnalysisSetup (fftSize) {
+  if (analysisCache.has(fftSize)) {
+    return analysisCache.get(fftSize)
+  }
+
+  const window = createHannWindow(fftSize)
+  const context = getFFTContext(fftSize)
+  let windowSum = 0
+
+  for (let index = 0; index < window.length; index++) {
+    windowSum += window[index]
+  }
+
+  const setup = {
+    window,
+    context,
+    referenceMagnitude: Math.max(1, windowSum * 0.5)
+  }
+
+  analysisCache.set(fftSize, setup)
+  return setup
+}
+
+/**
+ * Estimates whether reassignment can use the previous phase frame.
+ * @param {number} sampleRate - Audio sample rate.
+ * @param {number} fftSize - FFT size.
+ * @param {number|null} hopSamples - Estimated hop size.
+ * @returns {boolean} True when state is compatible.
+ */
+function isReassignmentStateCompatible (sampleRate, fftSize, hopSamples) {
+  return (
+    reassignmentState.lastPhase &&
+    reassignmentState.fftSize === fftSize &&
+    reassignmentState.sampleRate === sampleRate &&
+    hopSamples !== null &&
+    hopSamples > 0 &&
+    hopSamples < fftSize * 4
+  )
+}
+
+/**
+ * Applies bin-wise frequency reassignment using phase advance between frames.
+ * @param {Float32Array} destination - Reassigned magnitude bins.
+ * @param {Object} spectrum - Current STFT output.
+ * @param {number} hopSamples - Estimated hop size in samples.
+ * @param {number} sampleRate - Audio sample rate.
+ * @param {number} fftSize - FFT size.
+ */
+function applyFrequencyReassignment (destination, spectrum, hopSamples, sampleRate, fftSize) {
+  const { magnitude, phase } = spectrum
+  const peakMagnitude = getPeakMagnitude(magnitude)
+  const minimumMagnitude = peakMagnitude * 0.015
+
+  if (peakMagnitude <= 0) {
+    return
+  }
+
+  for (let bin = 1; bin < magnitude.length - 1; bin++) {
+    const binMagnitude = magnitude[bin]
+
+    if (binMagnitude < minimumMagnitude) {
+      destination[bin] += binMagnitude * 0.25
+      continue
+    }
+
+    const expectedAdvance = (2 * Math.PI * hopSamples * bin) / fftSize
+    const phaseAdvance = phase[bin] - reassignmentState.lastPhase[bin]
+    const correctedAdvance = wrapPhase(phaseAdvance - expectedAdvance)
+    const reassignedBin = bin + (correctedAdvance * fftSize) / (2 * Math.PI * hopSamples)
+
+    if (!Number.isFinite(reassignedBin) || reassignedBin < 0 || reassignedBin >= magnitude.length - 1) {
+      destination[bin] += binMagnitude
+      continue
+    }
+
+    accumulateFractionalBin(destination, reassignedBin, binMagnitude)
+  }
+
+  destination[0] += magnitude[0]
+  destination[magnitude.length - 1] += magnitude[magnitude.length - 1]
+}
+
+/**
+ * Scales magnitude values into a 0-255 range.
+ * @param {Float32Array} magnitude - Magnitude bins.
+ * @returns {Float32Array} Scaled magnitudes.
+ */
+function scaleMagnitudeToByteRange (magnitude) {
+  const output = new Float32Array(magnitude.length)
+  const peakMagnitude = getPeakMagnitude(magnitude)
+
+  if (peakMagnitude <= 0) {
+    return output
+  }
+
+  const noiseFloor = peakMagnitude * 0.015
+  const dynamicRange = Math.max(peakMagnitude - noiseFloor, peakMagnitude * 0.25)
+
+  for (let bin = 0; bin < magnitude.length; bin++) {
+    const lifted = Math.max(0, magnitude[bin] - noiseFloor)
+    const normalized = Math.max(0, Math.min(1, lifted / dynamicRange))
+    output[bin] = Math.min(255, Math.pow(normalized, 0.58) * 255)
+  }
+
+  return output
+}
+
+/**
+ * Applies a light 3-tap smoothing kernel to avoid isolated spikes.
+ * @param {Float32Array} spectrum - Magnitude bins.
+ * @returns {Float32Array} Smoothed magnitude bins.
+ */
+function smoothSpectrum (spectrum) {
+  const smoothed = new Float32Array(spectrum.length)
+
+  if (spectrum.length === 0) {
+    return smoothed
+  }
+
+  smoothed[0] = spectrum[0]
+  smoothed[spectrum.length - 1] = spectrum[spectrum.length - 1]
+
+  for (let bin = 1; bin < spectrum.length - 1; bin++) {
+    smoothed[bin] = (
+      spectrum[bin - 1] * 0.18 +
+      spectrum[bin] * 0.64 +
+      spectrum[bin + 1] * 0.18
+    )
+  }
+
+  return smoothed
+}
+
+/**
+ * Accumulates energy into neighboring bins using linear interpolation.
+ * @param {Float32Array} destination - Target bins.
+ * @param {number} fractionalBin - Fractional reassigned bin position.
+ * @param {number} magnitude - Magnitude to accumulate.
+ */
+function accumulateFractionalBin (destination, fractionalBin, magnitude) {
+  const lowerBin = Math.floor(fractionalBin)
+  const upperBin = Math.min(destination.length - 1, lowerBin + 1)
+  const upperWeight = fractionalBin - lowerBin
+  const lowerWeight = 1 - upperWeight
+
+  destination[lowerBin] += magnitude * lowerWeight
+  destination[upperBin] += magnitude * upperWeight
+}
+
+/**
+ * Computes the peak magnitude of a spectrum.
+ * @param {Float32Array} magnitude - Magnitude bins.
+ * @returns {number} Peak magnitude.
+ */
+function getPeakMagnitude (magnitude) {
+  let peak = 0
+
+  for (let bin = 0; bin < magnitude.length; bin++) {
+    if (magnitude[bin] > peak) {
+      peak = magnitude[bin]
+    }
+  }
+
+  return peak
+}
+
+/**
+ * Updates stored phase state after a reassignment frame.
+ * @param {Float32Array} phase - Current phase spectrum.
+ * @param {number} sampleRate - Audio sample rate.
+ * @param {number} fftSize - FFT size.
+ * @param {number} currentTime - AudioContext currentTime.
+ */
+function updateReassignmentState (phase, sampleRate, fftSize, currentTime) {
+  reassignmentState.lastPhase = new Float32Array(phase)
+  reassignmentState.sampleRate = sampleRate
+  reassignmentState.fftSize = fftSize
+  reassignmentState.lastTime = currentTime
+}
+
+/**
+ * Estimates the hop size from audio clock time.
+ * @param {number} currentTime - Current audio time.
+ * @param {number} sampleRate - Audio sample rate.
+ * @returns {number|null} Hop size in samples.
+ */
+function getHopSamples (currentTime, sampleRate) {
+  if (reassignmentState.lastTime === null) {
+    return null
+  }
+
+  const deltaTime = currentTime - reassignmentState.lastTime
+
+  if (!Number.isFinite(deltaTime) || deltaTime <= 0) {
+    return null
+  }
+
+  return Math.max(1, Math.round(deltaTime * sampleRate))
+}
+
+/**
+ * Wraps a phase angle to [-pi, pi].
+ * @param {number} phase - Phase angle.
+ * @returns {number} Wrapped phase.
+ */
+function wrapPhase (phase) {
+  let wrapped = phase
+
+  while (wrapped > Math.PI) {
+    wrapped -= 2 * Math.PI
+  }
+
+  while (wrapped < -Math.PI) {
+    wrapped += 2 * Math.PI
+  }
+
+  return wrapped
 }

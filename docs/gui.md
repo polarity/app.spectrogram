@@ -25,8 +25,8 @@
   - `Color Theme`
   - Custom low, mid, and high colors when `custom` theme is selected
   - `FFT Size`
-  - `Tonal Persistence (wip)`
-  - `Use Reassignment (wip)`
+  - `Tonal Stability`
+  - `Use Reassignment`
 
 ## Canvas Interaction
 

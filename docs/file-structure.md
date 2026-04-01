@@ -47,7 +47,7 @@ app.spectrogram/
 - `audioHandler.js`: Owns `AudioContext`, `AnalyserNode`, stream setup, stop/start lifecycle, and FFT size changes.
 - `spectrogramRenderer.js`: Renders the scrolling spectrogram and overlays note guides and drawn MIDI note blocks.
 - `colorThemes.js`: Stores the built-in color theme functions and custom color interpolation.
-- `timeFrequencyReassignment.js`: Houses experimental analysis code for reassigned frequency output.
+- `timeFrequencyReassignment.js`: Houses the frequency-reassignment analysis path used to sharpen tonal ridges.
 - `utils/`: Shared DSP and MIDI helper functions used by the renderer and reassignment path.
 - `img/`: Favicon and social-preview assets referenced by `index.html`.
 - `docs/`: Human-facing project context, structure, GUI notes, design direction, and backlog.

@@ -13,7 +13,8 @@ Try it on the web: [Demo](https://bit.ly/3Z1b7xm)
 - FFT size selection up to `32768`
 - Pause mode for drawing note regions directly on the spectrogram
 - MIDI export from drawn notes
-- Experimental tonal persistence and time-frequency reassignment controls
+- Frequency reassignment mode for sharper tonal ridges
+- Tonal stability control for emphasizing sustained harmonics
 
 ## Requirements
 

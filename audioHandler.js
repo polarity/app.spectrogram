@@ -4,49 +4,43 @@ let dataArray
 let source
 let isRunning = false
 
-// Update the FFT size constants
-const FFT_SIZES = [2048, 4096, 8192, 16384, 32768]
+const FFT_SIZES = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768]
 const DEFAULT_FFT_SIZE = 2048
+
+let currentFFTSize = DEFAULT_FFT_SIZE
 
 /**
  * Initializes the audio context and analyzer.
- * @returns {Object} An object containing the analyser and dataArray.
+ * @returns {Object} Analyzer state placeholders.
  */
 export function initAudio () {
-  // We'll create the AudioContext here, but not start it yet
   return { analyser: null, dataArray: null, audioContext: null }
 }
 
 /**
- * Toggles the audio input on and off.
- * @returns {Promise<boolean>} A promise that resolves to the new state of the audio input.
+ * Toggles audio input on and off.
+ * @returns {Promise<boolean>} Updated running state.
  */
 export function toggleAudio () {
-  if (isRunning) {
-    return stopAudioInput()
-  } else {
-    return startAudioInput()
-  }
+  return isRunning ? stopAudioInput() : startAudioInput()
 }
 
 /**
- * Starts the audio input.
- * @returns {Promise<boolean>} A promise that resolves to true if the audio input was started successfully.
+ * Starts the audio input stream.
+ * @returns {Promise<boolean>} True when audio starts successfully.
  */
 function startAudioInput () {
   if (isRunning) return Promise.resolve(true)
 
-  // Check if mediaDevices API is supported
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    const msg = 'MediaDevices API is not supported in this browser.'
-    console.error(msg)
+    console.error('MediaDevices API is not supported in this browser.')
     return Promise.resolve(false)
   }
 
   if (!audioContext) {
     audioContext = new (window.AudioContext || window.webkitAudioContext)()
     analyser = audioContext.createAnalyser()
-    analyser.fftSize = 2048 // Default FFT size, can be changed later
+    analyser.fftSize = currentFFTSize
     dataArray = new Uint8Array(analyser.frequencyBinCount)
   }
 
@@ -57,10 +51,7 @@ function startAudioInput () {
       isRunning = true
       return audioContext.resume()
     })
-    .then(() => {
-      console.log('Audio context started successfully')
-      return true
-    })
+    .then(() => true)
     .catch(err => {
       console.error('Error accessing microphone:', err)
       window.alert('Microphone access denied. Please allow access to use this feature.')
@@ -69,8 +60,8 @@ function startAudioInput () {
 }
 
 /**
- * Stops the audio input.
- * @returns {Promise<boolean>} A promise that resolves to false when the audio input is stopped.
+ * Stops the audio input stream.
+ * @returns {Promise<boolean>} False when audio is stopped.
  */
 function stopAudioInput () {
   if (!isRunning) return Promise.resolve(false)
@@ -81,21 +72,26 @@ function stopAudioInput () {
 }
 
 /**
- * Updates the FFT size of the analyser.
- * @param {number} size - The new FFT size.
- * @returns {Object} The updated analyser and dataArray.
+ * Updates the FFT size for current and future analyser instances.
+ * @param {number} size - Desired FFT size.
+ * @returns {Object} Updated analyser state.
  */
 export function updateFFTSize (size) {
-  if (FFT_SIZES.includes(size) && analyser) {
-    analyser.fftSize = size
-    dataArray = new Uint8Array(analyser.frequencyBinCount)
+  if (FFT_SIZES.includes(size)) {
+    currentFFTSize = size
+
+    if (analyser) {
+      analyser.fftSize = size
+      dataArray = new Uint8Array(analyser.frequencyBinCount)
+    }
   }
+
   return { analyser, dataArray }
 }
 
 /**
- * Gets the current audio data.
- * @returns {Object} An object containing the analyser, dataArray, and audioContext.
+ * Returns current audio analysis state.
+ * @returns {Object} Analyser, dataArray, and audioContext.
  */
 export function getAudioData () {
   return { analyser, dataArray, audioContext }

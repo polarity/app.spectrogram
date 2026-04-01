@@ -1,100 +1,149 @@
 /**
- * FFT implementation for signal processing
- * @param {Float32Array} data - The input data
- * @param {Float32Array} window - The window function
- * @returns {Float32Array} - The FFT result
+ * FFT helpers for spectrogram analysis.
  */
-export function computeSTFT(data, window) {
-  const N = data.length
-  const result = new Float32Array(N * 2)
+const fftCache = new Map()
+const windowCache = new Map()
 
-  // Apply window and normalize
-  const windowedData = new Float32Array(N)
-  let maxWindowed = 0
-  let sumWindowed = 0
-
-  for (let i = 0; i < N; i++) {
-    const windowed = data[i] * window[i]
-    windowedData[i] = windowed
-    maxWindowed = Math.max(maxWindowed, Math.abs(windowed))
-    sumWindowed += Math.abs(windowed)
+/**
+ * Returns a cached FFT context for a power-of-two size.
+ * @param {number} size - FFT size.
+ * @returns {Object} Cached twiddle and bit-reversal tables.
+ */
+export function getFFTContext (size) {
+  if (!Number.isInteger(size) || size < 2 || (size & (size - 1)) !== 0) {
+    throw new Error(`FFT size must be a power of two, got ${size}`)
   }
 
-  // Prepare FFT input
-  for (let i = 0; i < N; i++) {
-    result[i * 2] = windowedData[i]
-    result[i * 2 + 1] = 0
+  if (fftCache.has(size)) {
+    return fftCache.get(size)
   }
 
-  return performFFT(result)
+  const halfSize = size / 2
+  const cosTable = new Float32Array(halfSize)
+  const sinTable = new Float32Array(halfSize)
+  const bitReverse = new Uint32Array(size)
+  const bits = Math.round(Math.log2(size))
+
+  for (let index = 0; index < halfSize; index++) {
+    const angle = (-2 * Math.PI * index) / size
+    cosTable[index] = Math.cos(angle)
+    sinTable[index] = Math.sin(angle)
+  }
+
+  for (let index = 0; index < size; index++) {
+    bitReverse[index] = reverseBits(index, bits)
+  }
+
+  const context = { size, cosTable, sinTable, bitReverse }
+  fftCache.set(size, context)
+  return context
 }
 
 /**
- * Performs the FFT on the input data
- * @param {Float32Array} input - The input data
- * @returns {Float32Array} - The FFT result
+ * Creates and caches a Hann window.
+ * @param {number} size - Window size.
+ * @returns {Float32Array} Hann window samples.
  */
-function performFFT(input) {
-  const N = input.length / 2
-  const fft = new Float32Array(input.length)
-  fft.set(input)
-
-  // Bit reversal
-  let j = 0
-  for (let i = 0; i < N - 1; i++) {
-    if (i < j) {
-      // Swap complex values
-      const tempReal = fft[i * 2]
-      const tempImag = fft[i * 2 + 1]
-      fft[i * 2] = fft[j * 2]
-      fft[i * 2 + 1] = fft[j * 2 + 1]
-      fft[j * 2] = tempReal
-      fft[j * 2 + 1] = tempImag
-    }
-
-    let k = N >> 1
-    while (k <= j) {
-      j -= k
-      k >>= 1
-    }
-    j += k
+export function createHannWindow (size) {
+  if (windowCache.has(size)) {
+    return windowCache.get(size)
   }
 
-  // FFT computation
-  for (let step = 1; step < N; step <<= 1) {
-    const halfStep = step
-    const angle = -Math.PI / halfStep
+  const window = new Float32Array(size)
 
-    for (let group = 0; group < N; group += step * 2) {
-      const cosVal = Math.cos(angle)
-      const sinVal = Math.sin(angle)
+  for (let index = 0; index < size; index++) {
+    window[index] = 0.5 - 0.5 * Math.cos((2 * Math.PI * index) / (size - 1))
+  }
 
-      for (let pair = 0; pair < step; pair++) {
-        const groupOffset = group * 2
-        const pairOffset = pair * 2
-        const evenIndex = groupOffset + pairOffset
-        const oddIndex = evenIndex + step * 2
+  windowCache.set(size, window)
+  return window
+}
 
-        const evenReal = fft[evenIndex]
-        const evenImag = fft[evenIndex + 1]
-        const oddReal = fft[oddIndex]
-        const oddImag = fft[oddIndex + 1]
+/**
+ * Computes a windowed STFT frame.
+ * @param {Float32Array} data - Input frame.
+ * @param {Float32Array} window - Window samples.
+ * @param {Object} context - FFT context.
+ * @returns {Object} Complex spectrum, magnitude, and phase.
+ */
+export function computeSTFT (data, window, context) {
+  const size = context.size
+  const windowed = new Float32Array(size)
 
-        const factor = pair / step
-        const rotReal = cosVal * factor
-        const rotImag = sinVal * factor
+  for (let index = 0; index < size; index++) {
+    windowed[index] = (data[index] || 0) * window[index]
+  }
 
-        // Complex multiplication
-        const tempReal = oddReal * rotReal - oddImag * rotImag
-        const tempImag = oddReal * rotImag + oddImag * rotReal
+  const { real, imag } = fftReal(windowed, context)
+  const halfSize = size / 2
+  const magnitude = new Float32Array(halfSize)
+  const phase = new Float32Array(halfSize)
 
-        fft[oddIndex] = evenReal - tempReal
-        fft[oddIndex + 1] = evenImag - tempImag
-        fft[evenIndex] = evenReal + tempReal
-        fft[evenIndex + 1] = evenImag + tempImag
+  for (let bin = 0; bin < halfSize; bin++) {
+    const realPart = real[bin]
+    const imagPart = imag[bin]
+    magnitude[bin] = Math.hypot(realPart, imagPart)
+    phase[bin] = Math.atan2(imagPart, realPart)
+  }
+
+  return { real, imag, magnitude, phase }
+}
+
+/**
+ * Computes a forward FFT for a real-valued frame.
+ * @param {Float32Array} input - Real-valued input frame.
+ * @param {Object} context - FFT context.
+ * @returns {Object} Real and imaginary output arrays.
+ */
+export function fftReal (input, context) {
+  const { size, cosTable, sinTable, bitReverse } = context
+  const real = new Float32Array(size)
+  const imag = new Float32Array(size)
+
+  for (let index = 0; index < size; index++) {
+    real[index] = input[bitReverse[index]] || 0
+  }
+
+  for (let blockSize = 2; blockSize <= size; blockSize <<= 1) {
+    const halfBlock = blockSize / 2
+    const tableStep = size / blockSize
+
+    for (let start = 0; start < size; start += blockSize) {
+      for (let offset = 0; offset < halfBlock; offset++) {
+        const twiddleIndex = offset * tableStep
+        const cosValue = cosTable[twiddleIndex]
+        const sinValue = sinTable[twiddleIndex]
+        const evenIndex = start + offset
+        const oddIndex = evenIndex + halfBlock
+
+        const oddReal = real[oddIndex]
+        const oddImag = imag[oddIndex]
+        const tempReal = cosValue * oddReal - sinValue * oddImag
+        const tempImag = cosValue * oddImag + sinValue * oddReal
+
+        real[oddIndex] = real[evenIndex] - tempReal
+        imag[oddIndex] = imag[evenIndex] - tempImag
+        real[evenIndex] += tempReal
+        imag[evenIndex] += tempImag
       }
     }
   }
 
-  return fft
+  return { real, imag }
+}
+
+/**
+ * Reverses the lower `bits` bits in an integer.
+ * @param {number} value - Value to reverse.
+ * @param {number} bits - Number of bits to reverse.
+ * @returns {number} Bit-reversed index.
+ */
+function reverseBits (value, bits) {
+  let reversed = 0
+
+  for (let bit = 0; bit < bits; bit++) {
+    reversed = (reversed << 1) | ((value >> bit) & 1)
+  }
+
+  return reversed
 }
