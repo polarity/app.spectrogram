@@ -1,128 +1,133 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8">
-    <title>Spectrogram Analyzer</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <title>Spectrogram Analyzer</title>
+  <link rel="stylesheet" href="style.css">
 
-    <!-- open graph tags -->
-    <meta property="og:title" content="Spectrogram Analyzer" />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://spectrogram.polarity.me" />
-    <meta property="og:image" content="/img/polarity_spectrogramm_banner.png" />
-    <meta property="og:description" content="A spectrogram is a real-time audio spectrogram visualizer with time-frequency reassignment and MIDI export capabilities, implemented in vanilla JavaScript." />
-    <meta property="og:site_name" content="Polarity Music" />
-    <meta property="og:locale" content="en_US" />
-    <meta property="og:locale:alternate" content="en_US" />
+  <!-- open graph tags -->
+  <meta property="og:title" content="Spectrogram Analyzer" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://spectrogram.polarity.me" />
+  <meta property="og:image" content="/img/polarity_spectrogramm_banner.png" />
+  <meta property="og:description" content="A spectrogram is a real-time audio spectrogram visualizer with time-frequency reassignment and MIDI export capabilities, implemented in vanilla JavaScript." />
+  <meta property="og:site_name" content="Polarity Music" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="en_US" />
 
-    <!-- twitter tags -->
-    <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="spectrogram" />
-    <meta name="twitter:description" content="A spectrogram is a real-time audio spectrogram visualizer with time-frequency reassignment and MIDI export capabilities, implemented in vanilla JavaScript." />
-    <meta name="twitter:image" content="/img/polarity_spectrogramm_banner.png" />
+  <!-- twitter tags -->
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="spectrogram" />
+  <meta name="twitter:description" content="A spectrogram is a real-time audio spectrogram visualizer with time-frequency reassignment and MIDI export capabilities, implemented in vanilla JavaScript." />
+  <meta name="twitter:image" content="/img/polarity_spectrogramm_banner.png" />
 
-    <!-- general tags -->
-    <meta name="description" content="Spectrogram">
-    <meta name="keywords" content="Spectrogram, Audio, Visualization">
-    <meta name="author" content="polarity">
+  <!-- general tags -->
+  <meta name="description" content="Spectrogram">
+  <meta name="keywords" content="Spectrogram, Audio, Visualization">
+  <meta name="author" content="polarity">
 
-    <!-- favicon -->
-    <link rel="icon" type="image/ico" href="img/favicon.ico">
+  <!-- favicon -->
+  <link rel="icon" type="image/ico" href="img/favicon.ico">
 
-    <!-- mobile -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- mobile -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
-    <div class="canvas-container">
+  <main id="spectrogram-app">
+    <section class="canvas-stage">
+      <div class="canvas-container">
         <canvas id="spectrogramCanvas"></canvas>
-    </div>
+      </div>
+    </section>
 
-    <div id="controls">
-      <button id="toggleButton">Start</button>
-      <button id="pauseButton">Pause / Note Draw</button>
-      <button id="exportMidiButton">Export MIDI</button>
-      <!-- <button id="dragMidiButton">🎵 Drag MIDI</button> -->
-      <button id="showControlsButton">Show Controls</button>
-    </div>
+    <section class="panel-stack">
+      <div id="controls">
+        <button id="toggleButton">Start</button>
+        <button id="pauseButton">Pause / Note Draw</button>
+        <button id="exportMidiButton">Export MIDI</button>
+        <button id="showControlsButton">Show Controls</button>
+      </div>
 
-    <div id="controlsContainer" class="controls">
+      <div id="controlsContainer" class="controls">
         <div class="control-group">
-            <label for="frequencyRangeSlider">Frequency Range:</label>
-            <input type="range" id="frequencyRangeSlider" min="2" max="4" step="0.1" value="4">
+          <label for="frequencyRangeSlider">Frequency Range</label>
+          <input type="range" id="frequencyRangeSlider" min="2" max="4" step="0.1" value="4">
         </div>
         <div class="control-group">
-            <label for="minDbSlider">Min dB:</label>
-            <input type="range" id="minDbSlider" min="-20" max="0" step="0.1" value="-6">
-            <span id="minDbValue">-6.0</span>
+          <label for="minDbSlider">Min dB</label>
+          <input type="range" id="minDbSlider" min="-20" max="0" step="0.1" value="-6">
+          <span id="minDbValue">-6.0</span>
         </div>
         <div class="control-group">
-            <label for="maxDbSlider">Max dB:</label>
-            <input type="range" id="maxDbSlider" min="-10" max="0" step="0.1" value="0">
-            <span id="maxDbValue">0.0</span>
+          <label for="maxDbSlider">Max dB</label>
+          <input type="range" id="maxDbSlider" min="-10" max="0" step="0.1" value="0">
+          <span id="maxDbValue">0.0</span>
         </div>
         <div class="control-group">
-            <label for="contrastSlider">Contrast:</label>
-            <input type="range" id="contrastSlider" min="0" max="2" step="0.1" value="1">
+          <label for="contrastSlider">Contrast</label>
+          <input type="range" id="contrastSlider" min="0" max="2" step="0.1" value="1">
         </div>
         <div class="control-group">
-            <label for="brightnessSlider">Brightness:</label>
-            <input type="range" id="brightnessSlider" min="-1" max="1" step="0.1" value="0">
+          <label for="brightnessSlider">Brightness</label>
+          <input type="range" id="brightnessSlider" min="-1" max="1" step="0.1" value="0">
         </div>
         <div class="control-group">
-            <label for="themeSelect">Color Theme:</label>
-            <select id="themeSelect">
-                <option value="heatmap">Heatmap</option>
-                <option value="grayscale">Grayscale</option>
-                <option value="rainbow">Rainbow</option>
-                <option value="greenToRed">Green to Red</option>
-                <option value="blueToYellow">Blue to Yellow</option>
-                <option value="darkOcean">Dark Ocean</option>
-                <option value="nightVision">Night Vision</option>
-                <option value="blackToPurple">Black to Purple</option>
-                <option value="custom">Custom</option>
-            </select>
+          <label for="themeSelect">Color Theme</label>
+          <select id="themeSelect">
+            <option value="heatmap">Heatmap</option>
+            <option value="grayscale">Grayscale</option>
+            <option value="rainbow">Rainbow</option>
+            <option value="greenToRed">Green to Red</option>
+            <option value="blueToYellow">Blue to Yellow</option>
+            <option value="darkOcean">Dark Ocean</option>
+            <option value="nightVision">Night Vision</option>
+            <option value="blackToPurple">Black to Purple</option>
+            <option value="custom">Custom</option>
+          </select>
         </div>
         <div class="control-group" id="customThemeControls" style="display: none;">
-            <label for="customColorLow">Low Intensity Color:</label>
-            <input type="color" id="customColorLow" data-index="0" value="#0000FF">
-            <label for="customColorMid">Mid Intensity Color:</label>
-            <input type="color" id="customColorMid" data-index="1" value="#00FF00">
-            <label for="customColorHigh">High Intensity Color:</label>
-            <input type="color" id="customColorHigh" data-index="2" value="#FF0000">
+          <label for="customColorLow">Low Intensity</label>
+          <input type="color" id="customColorLow" data-index="0" value="#0000FF">
+          <label for="customColorMid">Mid Intensity</label>
+          <input type="color" id="customColorMid" data-index="1" value="#00FF00">
+          <label for="customColorHigh">High Intensity</label>
+          <input type="color" id="customColorHigh" data-index="2" value="#FF0000">
         </div>
         <div class="control-group">
-            <label for="fftSizeSelect">FFT Size:</label>
-            <select id="fftSizeSelect">
-                <option value="256">256</option>
-                <option value="512">512</option>
-                <option value="1024">1024</option>
-                <option value="2048" selected>2048</option>
-                <option value="4096">4096</option>
-                <option value="8192">8192</option>
-                <option value="16384">16384</option>
-                <option value="32768">32768</option>
-            </select>
+          <label for="fftSizeSelect">FFT Size</label>
+          <select id="fftSizeSelect">
+            <option value="256">256</option>
+            <option value="512">512</option>
+            <option value="1024">1024</option>
+            <option value="2048" selected>2048</option>
+            <option value="4096">4096</option>
+            <option value="8192">8192</option>
+            <option value="16384">16384</option>
+            <option value="32768">32768</option>
+          </select>
         </div>
         <div class="control-group">
-            <label for="persistenceSlider">Tonal Persistence (wip):</label>
-            <input type="range" id="persistenceSlider" min="0" max="1" step="0.01" value="0">
-            <span id="persistenceValue">0.00</span>
+          <label for="persistenceSlider">Tonal Persistence (WIP)</label>
+          <input type="range" id="persistenceSlider" min="0" max="1" step="0.01" value="0">
+          <span id="persistenceValue">0.00</span>
         </div>
-        <div class="control-group">
-            <label for="useReassignment">Use Reassignment (wip):</label>
-            <input type="checkbox" id="useReassignment">
+        <div class="control-group checkbox-group">
+          <label for="useReassignment">Use Reassignment (WIP)</label>
+          <input type="checkbox" id="useReassignment">
         </div>
-    </div>
+      </div>
+    </section>
+  </main>
 
-    <script type="module" src="main.js"></script>
+  <script type="module" src="main.js"></script>
 
-    <footer >
-        <a href="https://bit.ly/3PgbxZz">Support me</a>
-        | <a href="https://github.com/polarity/app.spectrogram">Github</a> 
-        | <a href="https://polarity.me/">back to my site</a> 
-        | <a href="https://spectrogram.polarity.me/">spectrogram analyzer</a> 
-        | <a href="https://spectrum.polarity.me/">spectrum analyzer</a> 
-        | <a href="https://vectorscope.polarity.me/">vectorscope</a>
-    </footer>
+  <footer>
+    <a href="https://bit.ly/3PgbxZz">Support me</a>
+    | <a href="https://github.com/polarity/app.spectrogram">Github</a>
+    | <a href="https://polarity.me/">back to my site</a>
+    | <a href="https://spectrogram.polarity.me/">spectrogram analyzer</a>
+    | <a href="https://spectrum.polarity.me/">spectrum analyzer</a>
+    | <a href="https://vectorscope.polarity.me/">vectorscope</a>
+  </footer>
 </body>
 </html>

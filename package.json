@@ -4,7 +4,7 @@
   "description": "A spectrogram visualizer for audio input",
   "type": "module",
   "scripts": {
-    "start": "http-server -c-1 --ssl --cert ./cert.pem --key ./key.pem",
+    "start": "http-server -c-1",
     "lint": "standard",
     "lint:fix": "standard --fix"
   },
