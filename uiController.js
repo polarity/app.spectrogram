@@ -1,10 +1,11 @@
-import { toggleAudio, updateFFTSize, initAudio, getAudioData } from './audioHandler.js'
+import { toggleAudio, updateFFTSize, initAudio, getAudioData, getAvailableAudioInputs, getResolvedAudioInputId, isAudioRunning, refreshAudioInputSelection, switchAudioInput } from './audioHandler.js'
 import { updateFrequencyRange, updateDbRange, updateContrastBrightness, drawFrequencyMarkers, updateSpectrogramm, updatePersistence, togglePause, exportToMidi, createMidiData, toggleReassignment } from './spectrogramRenderer.js'
 import { updateTheme, updateCustomTheme } from './colorThemes.js'
 
 let analyser
 let dataArray
 let audioContext
+let animationFrameId = 0
 
 /**
  * Initializes all UI controls and their event listeners.
@@ -30,19 +31,23 @@ export function initUIControls (canvas, labelCanvas) {
   const pauseButton = document.getElementById('pauseButton')
   const dragMidiButton = document.getElementById('dragMidiButton')
   const reassignmentCheckbox = document.getElementById('useReassignment')
+  const audioInputPlaceholder = document.getElementById('audioInputPlaceholder')
 
   controlsContainer.style.display = 'none'
   showControlsButton.textContent = 'Show Controls'
 
   initAudio()
 
-  toggleButton.addEventListener('click', () => {
+  toggleButton.addEventListener('click', async () => {
     toggleAudio().then(isRunning => {
       toggleButton.textContent = isRunning ? 'Stop' : 'Start'
 
       if (isRunning) {
         ({ analyser, dataArray, audioContext } = getAudioData())
-        animate()
+        startAnimationLoop()
+        updateAudioInputSelect()
+      } else {
+        stopAnimationLoop()
       }
     })
   })
@@ -93,6 +98,15 @@ export function initUIControls (canvas, labelCanvas) {
     toggleReassignment(event.target.checked)
   })
 
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+    navigator.mediaDevices.addEventListener('devicechange', async () => {
+      if (audioInputPlaceholder.classList.contains('is-visible')) {
+        await refreshAudioInputSelection()
+        updateAudioInputSelect()
+      }
+    })
+  }
+
   setupDragAndDrop(dragMidiButton)
 
   updateFrequencyRangeFromUI()
@@ -103,7 +117,19 @@ export function initUIControls (canvas, labelCanvas) {
   function animate () {
     if (analyser && dataArray && audioContext) {
       updateSpectrogramm(analyser, dataArray, audioContext)
-      window.requestAnimationFrame(animate)
+      animationFrameId = window.requestAnimationFrame(animate)
+    }
+  }
+
+  function startAnimationLoop () {
+    stopAnimationLoop()
+    animate()
+  }
+
+  function stopAnimationLoop () {
+    if (animationFrameId) {
+      window.cancelAnimationFrame(animationFrameId)
+      animationFrameId = 0
     }
   }
 
@@ -137,6 +163,54 @@ export function initUIControls (canvas, labelCanvas) {
   }
 
   function handleCanvasClick () {}
+
+  async function updateAudioInputSelect () {
+    const audioInputs = await getAvailableAudioInputs()
+    const selectedDeviceId = await getResolvedAudioInputId()
+    let select = document.getElementById('audioInputSelect')
+
+    if (!select) {
+      const label = document.createElement('label')
+      label.setAttribute('for', 'audioInputSelect')
+      label.textContent = 'Audio Input'
+
+      select = document.createElement('select')
+      select.id = 'audioInputSelect'
+      select.addEventListener('change', async event => {
+        const switched = await switchAudioInput(event.target.value)
+
+        if (switched) {
+          ({ analyser, dataArray, audioContext } = getAudioData())
+          startAnimationLoop()
+          updateAudioInputSelect()
+        }
+      })
+
+      audioInputPlaceholder.appendChild(label)
+      audioInputPlaceholder.appendChild(select)
+    }
+
+    select.innerHTML = ''
+
+    const defaultOption = document.createElement('option')
+    defaultOption.value = ''
+    defaultOption.textContent = 'Default'
+    select.appendChild(defaultOption)
+
+    audioInputs.forEach(input => {
+      const option = document.createElement('option')
+      option.value = input.deviceId
+      option.textContent = input.label || `(${input.deviceId.slice(0, 5)}...)`
+      select.appendChild(option)
+    })
+
+    select.value = selectedDeviceId || ''
+    if (select.value !== (selectedDeviceId || '')) {
+      select.value = ''
+    }
+
+    audioInputPlaceholder.classList.toggle('is-visible', audioInputs.length >= 0 && isAudioRunning())
+  }
 
   function setupDragAndDrop (button) {
     if (!button) {

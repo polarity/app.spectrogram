@@ -168,6 +168,7 @@ canvas {
 }
 
 #controls button,
+#audioInputPlaceholder select,
 #controlsContainer select,
 #controlsContainer input[type='color'] {
   min-height: 46px;
@@ -206,6 +207,33 @@ canvas {
 
 #controls button:active {
   transform: translateY(0);
+}
+
+#audioInputPlaceholder {
+  display: none;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--color-surface-strong);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+#audioInputPlaceholder.is-visible {
+  display: grid;
+}
+
+#audioInputPlaceholder label {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+#audioInputPlaceholder select {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--color-surface-soft);
+  color: var(--color-text);
 }
 
 #controlsContainer {
@@ -312,7 +340,8 @@ footer {
 
   .control-group,
   .checkbox-group,
-  #customThemeControls {
+  #customThemeControls,
+  #audioInputPlaceholder {
     grid-template-columns: 1fr;
   }
 
